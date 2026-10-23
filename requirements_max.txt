@@ -1,0 +1,6 @@
+APScheduler==3.10.4
+Flask==3.1.2
+waitress==3.0.2
+openpyxl==3.1.5
+psycopg2-binary==2.9.9
+python-telegram-bot==21.3
