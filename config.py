@@ -64,4 +64,11 @@ MENU_IMAGES_DIR = "menu_images"
 # PROXY_URL = 'socks5://127.0.0.1:1080'      # Для SOCKS5 прокси
 # PROXY_URL = 'http://127.0.0.1:8080'        # Для HTTP прокси
 # PROXY_URL = 'https://127.0.0.1:8443'       # Для HTTPS прокси
-PROXY_URL = os.getenv('HTTPS_PROXY') or os.getenv('HTTP_PROXY') or None
+# Настройки прокси
+raw_proxy = os.getenv('HTTPS_PROXY') or os.getenv('HTTP_PROXY') or None
+# На сервере хостинга (Linux) локальный прокси 127.0.0.1 не нужен и вызовет Connection Refused
+if raw_proxy and ('127.0.0.1' in raw_proxy or 'localhost' in raw_proxy) and os.name != 'nt':
+    PROXY_URL = None
+else:
+    PROXY_URL = raw_proxy
+
