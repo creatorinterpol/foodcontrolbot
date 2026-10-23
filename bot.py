@@ -15,8 +15,10 @@ from apscheduler.triggers.cron import CronTrigger
 import pytz
 
 import config
-from menu import get_today_menu, get_today_menu_compact
+from menu import get_today_menu, get_today_menu_compact, get_current_week_cycle
 from menu_images import get_menu_image_path, is_weekend, setup_menu_images_directory
+from menu_pdf import get_today_menu_image, setup_pdf_images_directory, check_pdf_available
+from menu_upload import setup_menu_upload
 from database import (
     save_vote, register_teacher, get_teacher_by_class,
     init_group, get_class_by_chat, save_student,
@@ -147,7 +149,7 @@ def send_welcome(message):
 
 @bot.message_handler(commands=['menu'])
 def send_menu(message):
-    """Отправка меню с кнопками для голосования"""
+    """Отправка меню с кнопками для голосования и фото"""
     user_id = str(message.from_user.id)
     if not get_user_role(user_id):
         bot.send_message(message.chat.id, "⛔️ Сначала авторизуйтесь через /start")
@@ -167,7 +169,7 @@ def send_menu(message):
     btn_free = types.InlineKeyboardButton("🆓 Бесплатно", callback_data="vote_бесплатно")
     markup.add(btn_paid, btn_free)
 
-    # Отправка компактного меню текстом (без картинок)
+    # Отправка меню текстом
     menu_text = get_today_menu_compact()
     bot.send_message(
         message.chat.id,
@@ -176,9 +178,26 @@ def send_menu(message):
         parse_mode='Markdown'
     )
 
+    # Отправка фото меню если существует
+    user_class = get_user_class(user_id)
+
+    # Сначала пытаемся взять из PDF
+    menu_image_path = get_today_menu_image()
+
+    # Если нет в PDF, берём загруженное через /upload_menu
+    if not menu_image_path or not os.path.exists(menu_image_path):
+        menu_image_path = get_menu_image_path(user_class or config.DEFAULT_CLASS)
+
+    if menu_image_path and os.path.exists(menu_image_path):
+        try:
+            with open(menu_image_path, 'rb') as photo:
+                bot.send_photo(message.chat.id, photo, caption="📸 Фото меню")
+        except Exception as e:
+            logger.warning(f"Не удалось отправить фото меню: {e}")
+
 
 def send_menu_to_group(chat_id, class_name):
-    """Отправка меню в групповой чат"""
+    """Отправка меню в групповой чат с фото"""
     try:
         # Проверка на выходной
         if is_weekend():
@@ -194,7 +213,7 @@ def send_menu_to_group(chat_id, class_name):
         btn_no = types.InlineKeyboardButton("❌ Не обедаю", callback_data="vote_не обедает")
         markup.add(btn_paid, btn_free, btn_no)
 
-        # Отправка компактного меню текстом (без картинок)
+        # Отправка компактного меню текстом
         menu_text = get_today_menu_compact()
         bot.send_message(
             chat_id,
@@ -202,6 +221,22 @@ def send_menu_to_group(chat_id, class_name):
             reply_markup=markup,
             parse_mode='Markdown'
         )
+
+        # Отправка фото меню если существует
+        # Сначала пытаемся взять из PDF
+        menu_image_path = get_today_menu_image()
+
+        # Если нет в PDF, берём загруженное
+        if not menu_image_path or not os.path.exists(menu_image_path):
+            menu_image_path = get_menu_image_path(class_name)
+
+        if menu_image_path and os.path.exists(menu_image_path):
+            try:
+                with open(menu_image_path, 'rb') as photo:
+                    bot.send_photo(chat_id, photo, caption="📸 Фото меню")
+                logger.info(f"Фото меню отправлено в группу {chat_id}")
+            except Exception as e:
+                logger.warning(f"Не удалось отправить фото меню: {e}")
 
         logger.info(f"Меню отправлено в группу {chat_id} (класс {class_name})")
     except Exception as e:
@@ -552,9 +587,13 @@ def scheduled_send_menu():
     logger.info("Запуск автоматической отправки меню")
 
     try:
-        from database import get_all_groups
-        groups = get_all_groups()
+        from datetime import datetime
 
+        today = datetime.now()
+        cycle_week = get_current_week_cycle()
+        day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][today.weekday()]
+
+        groups = get_all_groups()
         if not groups:
             logger.warning("Нет зарегистрированных групп для отправки меню")
             return
@@ -562,10 +601,37 @@ def scheduled_send_menu():
         for group_data in groups:
             chat_id = group_data['chat_id']
             class_name = group_data['class_name']
-            send_menu_to_group(chat_id, class_name)
-            time.sleep(1)  # Небольшая задержка для избежания rate limit
 
-        logger.info(f"Меню успешно отправлено в {len(groups)} групп")
+            try:
+                menu_text = get_today_menu_compact()
+                header = f"📋 **Меню класса {class_name}**\n📅 **Неделя {cycle_week}** | {day_name}\n\n"
+
+                markup = types.InlineKeyboardMarkup(row_width=3)
+                markup.add(
+                    types.InlineKeyboardButton("💳 Платно", callback_data="vote_платно"),
+                    types.InlineKeyboardButton("🆓 Бесплатно", callback_data="vote_бесплатно"),
+                    types.InlineKeyboardButton("❌ Не обедаю", callback_data="vote_не обедает")
+                )
+
+                bot.send_message(chat_id, f"{header}{menu_text}\n\n👇 **Выберите вариант питания:**",
+                               reply_markup=markup, parse_mode='Markdown')
+
+                # Сначала пытаемся взять из PDF
+                menu_image_path = get_today_menu_image()
+
+                # Если нет в PDF, берём загруженное
+                if not menu_image_path or not os.path.exists(menu_image_path):
+                    menu_image_path = get_menu_image_path(class_name)
+
+                if menu_image_path and os.path.exists(menu_image_path):
+                    with open(menu_image_path, 'rb') as photo:
+                        bot.send_photo(chat_id, photo, caption="📸 Фото меню")
+
+                logger.info(f"Меню отправлено в {class_name} (неделя {cycle_week})")
+            except Exception as e:
+                logger.error(f"Ошибка при отправке в {chat_id}: {e}")
+
+            time.sleep(1)
 
     except Exception as e:
         logger.error(f"Ошибка при автоотправке меню: {e}")
@@ -644,20 +710,18 @@ def scheduled_send_report():
 
 
 def setup_scheduler():
-    """Настройка планировщика задач"""
+    """Настройка планировщика на 14:00 ежедневно"""
     try:
-        # Парсинг времени из конфигурации
-        menu_hour, menu_minute = map(int, config.SCHEDULE_MENU_TIME.split(':'))
-        report_hour, report_minute = map(int, config.SCHEDULE_REPORT_TIME.split(':'))
-
-        # Добавление задач в планировщик
+        # Меню в 14:00 каждый день (пн-пт)
         scheduler.add_job(
             scheduled_send_menu,
-            CronTrigger(hour=menu_hour, minute=menu_minute, day_of_week='mon-fri'),
+            CronTrigger(hour=14, minute=0, day_of_week='mon-fri'),
             id='send_menu',
             replace_existing=True
         )
 
+        # Отчет в конце дня
+        report_hour, report_minute = map(int, config.SCHEDULE_REPORT_TIME.split(':'))
         scheduler.add_job(
             scheduled_send_report,
             CronTrigger(hour=report_hour, minute=report_minute, day_of_week='mon-fri'),
@@ -666,9 +730,11 @@ def setup_scheduler():
         )
 
         scheduler.start()
-        logger.info("Планировщик успешно запущен")
-        logger.info(f"Меню будет отправляться в {config.SCHEDULE_MENU_TIME}")
-        logger.info(f"Отчет будет отправляться в {config.SCHEDULE_REPORT_TIME}")
+        logger.info("Планировщик запущен")
+        logger.info("Меню: каждый день в 14:00 (пн-пт)")
+
+        setup_menu_upload(bot)
+        logger.info("Загрузка меню включена")
 
     except Exception as e:
         logger.error(f"Ошибка при настройке планировщика: {e}")
@@ -687,6 +753,7 @@ def main():
 
     # Создание папки для картинок меню
     setup_menu_images_directory()
+    setup_pdf_images_directory()
     logger.info("Папка для картинок меню подготовлена")
 
     # Проверка токена

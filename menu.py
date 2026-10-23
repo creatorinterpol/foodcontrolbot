@@ -298,9 +298,34 @@ MENU_COMPACT_WEEK_2 = {
 }
 
 
+def get_current_week_cycle() -> int:
+    """
+    Определяет номер текущей недели в цикле (1 или 2)
+    Начинает отсчет с 1 сентября 2026 года
+
+    Returns:
+        1 или 2 - номер недели в цикле
+    """
+    today = date.today()
+    # Начало учебного года
+    start_date = date(2026, 9, 1)
+
+    # Если сегодня до начала учебного года, считаем от прошлого года
+    if today < start_date:
+        start_date = date(2025, 9, 1)
+
+    # Количество недель с начала учебного года
+    days_passed = (today - start_date).days
+    weeks_passed = days_passed // 7
+
+    # Цикл из 2 недель
+    cycle_week = (weeks_passed % 2) + 1
+    return cycle_week
+
+
 def get_today_menu() -> str:
     """
-    Определяет текущий день недели и четность недели,
+    Определяет текущий день недели и неделю в двухнедельном цикле,
     возвращает соответствующее меню
 
     Returns:
@@ -308,15 +333,14 @@ def get_today_menu() -> str:
     """
     today = date.today()
     weekday = today.weekday()  # 0 = понедельник, 6 = воскресенье
-    week_number = today.isocalendar()[1]  # Номер недели в году
 
     # Выходные дни
     if weekday in [5, 6]:  # Суббота или воскресенье
         return "🏖 Сегодня выходной день — столовая не работает.\n\nПриятных выходных!"
 
-    # Определяем четность недели
-    is_even_week = week_number % 2 == 0
-    menu_dict = MENU_WEEK_2 if is_even_week else MENU_WEEK_1
+    # Определяем неделю в цикле (1 или 2)
+    cycle_week = get_current_week_cycle()
+    menu_dict = MENU_WEEK_2 if cycle_week == 2 else MENU_WEEK_1
 
     return menu_dict.get(weekday, "Меню на сегодня не найдено")
 
@@ -332,13 +356,20 @@ def get_menu_for_date(target_date: date) -> str:
         Текст меню
     """
     weekday = target_date.weekday()
-    week_number = target_date.isocalendar()[1]
 
     if weekday in [5, 6]:
         return "🏖 Выходной день — столовая не работает."
 
-    is_even_week = week_number % 2 == 0
-    menu_dict = MENU_WEEK_2 if is_even_week else MENU_WEEK_1
+    # Определяем неделю в цикле
+    start_date = date(2026, 9, 1)
+    if target_date < start_date:
+        start_date = date(2025, 9, 1)
+
+    days_passed = (target_date - start_date).days
+    weeks_passed = days_passed // 7
+    cycle_week = (weeks_passed % 2) + 1
+
+    menu_dict = MENU_WEEK_2 if cycle_week == 2 else MENU_WEEK_1
 
     return menu_dict.get(weekday, "Меню не найдено")
 
@@ -353,15 +384,14 @@ def get_today_menu_compact() -> str:
     """
     today = date.today()
     weekday = today.weekday()  # 0 = понедельник, 6 = воскресенье
-    week_number = today.isocalendar()[1]  # Номер недели в году
 
     # Выходные дни
     if weekday in [5, 6]:  # Суббота или воскресенье
         return "🏖 **Выходной день** — столовая не работает.\n\nПриятных выходных! 😊"
 
-    # Определяем четность недели
-    is_even_week = week_number % 2 == 0
-    menu_dict = MENU_COMPACT_WEEK_2 if is_even_week else MENU_COMPACT_WEEK_1
+    # Определяем неделю в цикле (1 или 2)
+    cycle_week = get_current_week_cycle()
+    menu_dict = MENU_COMPACT_WEEK_2 if cycle_week == 2 else MENU_COMPACT_WEEK_1
 
     return menu_dict.get(weekday, "❌ Меню на сегодня не найдено")
 
@@ -377,12 +407,19 @@ def get_menu_compact_for_date(target_date: date) -> str:
         Компактный текст меню
     """
     weekday = target_date.weekday()
-    week_number = target_date.isocalendar()[1]
 
     if weekday in [5, 6]:
         return "🏖 **Выходной день** — столовая не работает."
 
-    is_even_week = week_number % 2 == 0
-    menu_dict = MENU_COMPACT_WEEK_2 if is_even_week else MENU_COMPACT_WEEK_1
+    # Определяем неделю в цикле
+    start_date = date(2026, 9, 1)
+    if target_date < start_date:
+        start_date = date(2025, 9, 1)
+
+    days_passed = (target_date - start_date).days
+    weeks_passed = days_passed // 7
+    cycle_week = (weeks_passed % 2) + 1
+
+    menu_dict = MENU_COMPACT_WEEK_2 if cycle_week == 2 else MENU_COMPACT_WEEK_1
 
     return menu_dict.get(weekday, "❌ Меню не найдено")
