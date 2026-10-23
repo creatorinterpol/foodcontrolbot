@@ -3,10 +3,5 @@ apscheduler==3.10.4
 pandas>=2.0.0
 openpyxl==3.1.2
 pytz==2023.3
-
 psycopg2-binary>=2.9.9
 python-dotenv>=1.0.0
-
-# PDF обработка
-pypdf>=3.17.0
-PyMuPDF>=1.23.0
