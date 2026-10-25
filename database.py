@@ -1,4 +1,4 @@
-"""
+﻿"""
 Слой работы с базой данных (SQLite/CockroachDB)
 """
 import sqlite3
