@@ -1,7 +1,8 @@
-"""
+﻿"""
 Конфигурация бота для автоматизации школьной столовой
 """
 import os
+import platform
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,10 +59,20 @@ REPORTS_DIR = os.getenv('REPORTS_DIR', os.path.join(BASE_DIR, 'reports'))
 # Путь к папке с картинками меню (2-недельное меню)
 MENU_IMAGES_DIR = "menu_images"
 
-# Настройки прокси для VPN
-# Если HappVPN или другой VPN не работает автоматически, раскомментируйте и установите:
-# Примеры:
-# PROXY_URL = 'socks5://127.0.0.1:1080'      # Для SOCKS5 прокси
-# PROXY_URL = 'http://127.0.0.1:8080'        # Для HTTP прокси
-# PROXY_URL = 'https://127.0.0.1:8443'       # Для HTTPS прокси
-PROXY_URL = os.getenv('HTTPS_PROXY') or os.getenv('HTTP_PROXY') or None
+# Настройки прокси
+raw_proxy = os.getenv('HTTPS_PROXY') or os.getenv('HTTP_PROXY') or None
+is_windows = platform.system() == 'Windows'
+
+# На сервере хостинга (Linux/Docker) локальный прокси 127.0.0.1 не существует и вызовет Connection Refused
+if not is_windows:
+    # Удаляем локальные переменные прокси из окружения, чтобы библиотека requests не пыталась к ним подключаться
+    for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
+        val = os.environ.get(key, '')
+        if '127.0.0.1' in val or 'localhost' in val:
+            os.environ.pop(key, None)
+    if raw_proxy and ('127.0.0.1' in raw_proxy or 'localhost' in raw_proxy):
+        PROXY_URL = None
+    else:
+        PROXY_URL = raw_proxy
+else:
+    PROXY_URL = raw_proxy

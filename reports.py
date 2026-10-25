@@ -57,11 +57,12 @@ def generate_daily_stats(class_name: str, report_date: str = None) -> str:
 
     votes = get_class_votes(class_name, report_date)
 
-    # Подсчет статистики
-    total_paid = sum(1 for v in votes if v['status'] == 'платно')
-    total_free = sum(1 for v in votes if v['status'] == 'бесплатно')
-    total_no_meal = sum(1 for v in votes if v['status'] == 'не обедает')
-    total_eating = total_paid + total_free
+    # Подсчет по новым категориям
+    total_breakfast_lunch = sum(1 for v in votes if v['status'] == 'завтрак_обед')
+    total_lunch = sum(1 for v in votes if v['status'] == 'обед')
+    total_breakfast_paid = sum(1 for v in votes if v['status'] == 'завтрак_платно')
+    total_breakfast_free = sum(1 for v in votes if v['status'] == 'завтрак_льготы')
+    total_eating = total_breakfast_lunch + total_lunch + total_breakfast_paid + total_breakfast_free
 
     # Форматирование даты для отображения
     date_obj = date.fromisoformat(report_date)
@@ -69,19 +70,19 @@ def generate_daily_stats(class_name: str, report_date: str = None) -> str:
 
     stats_text = f"""📊 **Питание: {class_name}** ({formatted_date})
 
-• Всего питается: **{total_eating} чел.**
-  — Платно: {total_paid}
-  — Бесплатно: {total_free}
-• Не питаются: {total_no_meal}
+• Завтрак+Обед: **{total_breakfast_lunch}**
+• Обед: **{total_lunch}**
+• Завтрак платно: **{total_breakfast_paid}**
+• Завтрак льготы: **{total_breakfast_free}**
 
-Всего проголосовало: {len(votes)} чел."""
+Всего питается: {total_eating} чел."""
 
     return stats_text
 
 
 def generate_excel_report(class_name: str, report_date: str = None) -> str:
     """
-    Генерация Excel-отчета со списком учеников класса
+    Генерация Excel-отчета с таблицей по категориям питания
 
     Args:
         class_name: Название класса
@@ -95,18 +96,52 @@ def generate_excel_report(class_name: str, report_date: str = None) -> str:
 
     votes = get_class_votes(class_name, report_date)
 
-    # Подготовка данных для DataFrame
-    data = {
-        'Фамилия и Имя': [v['student_name'] for v in votes],
-        'Категория питания': [v['status'].capitalize() for v in votes]
+    # Категории питания
+    categories = {
+        'завтрак_обед': [],
+        'обед': [],
+        'завтрак_платно': [],
+        'завтрак_льготы': [],
+        'не_обедает': []
     }
+
+    # Распределение по категориям
+    for vote in votes:
+        status = vote['status']
+        if status in categories:
+            categories[status].append(vote['student_name'])
+        elif status == 'не обедает':
+            categories['не_обедает'].append(vote['student_name'])
+
+    # Сортировка внутри каждой категории
+    for cat in categories:
+        categories[cat].sort()
+
+    # Определяем максимальное количество строк
+    max_rows = max(len(v) for v in categories.values()) if any(categories.values()) else 1
+
+    # Построение таблицы
+    data = {}
+    headers = {
+        'завтрак_обед': 'Завтрак+Обед',
+        'обед': 'Обед',
+        'завтрак_платно': 'Завтрак платно',
+        'завтрак_льготы': 'Завтрак льготы',
+        'не_обедает': 'Не обедает'
+    }
+
+    for cat_key, cat_label in headers.items():
+        data[cat_label] = []
+        students = categories[cat_key]
+        for i in range(max_rows):
+            if i < len(students):
+                data[cat_label].append('✓ ' + students[i])
+            else:
+                data[cat_label].append('')
 
     df = pd.DataFrame(data)
 
-    # Сортировка по алфавиту
-    df = df.sort_values('Фамилия и Имя')
-
-    # Создание директории для отчетов, если её нет
+    # Создание директории для отчетов
     if not os.path.exists(config.REPORTS_DIR):
         os.makedirs(config.REPORTS_DIR)
 
@@ -125,35 +160,37 @@ def generate_excel_report(class_name: str, report_date: str = None) -> str:
         for idx, col in enumerate(df.columns, 1):
             max_length = max(
                 df[col].astype(str).apply(len).max(),
-                len(col)
+                len(col),
+                15
             )
             worksheet.column_dimensions[chr(64 + idx)].width = max_length + 2
 
     return filepath
 
 
-def get_summary_stats(class_name: str, report_date: str = None) -> Tuple[int, int, int, int]:
+def get_summary_stats(class_name: str, report_date: str = None) -> Tuple[int, int, int, int, int]:
     """
-    Получение числовой статистики (для использования в коде)
+    Получение числовой статистики по новым категориям
 
     Args:
         class_name: Название класса
         report_date: Дата отчета
 
     Returns:
-        Кортеж (всего_питается, платно, бесплатно, не_обедает)
+        Кортеж (завтрак_обед, обед, завтрак_платно, завтрак_льготы, всего_питается)
     """
     if report_date is None:
         report_date = date.today().strftime("%Y-%m-%d")
 
     votes = get_class_votes(class_name, report_date)
 
-    total_paid = sum(1 for v in votes if v['status'] == 'платно')
-    total_free = sum(1 for v in votes if v['status'] == 'бесплатно')
-    total_no_meal = sum(1 for v in votes if v['status'] == 'не обедает')
-    total_eating = total_paid + total_free
+    total_breakfast_lunch = sum(1 for v in votes if v['status'] == 'завтрак_обед')
+    total_lunch = sum(1 for v in votes if v['status'] == 'обед')
+    total_breakfast_paid = sum(1 for v in votes if v['status'] == 'завтрак_платно')
+    total_breakfast_free = sum(1 for v in votes if v['status'] == 'завтрак_льготы')
+    total_eating = total_breakfast_lunch + total_lunch + total_breakfast_paid + total_breakfast_free
 
-    return total_eating, total_paid, total_free, total_no_meal
+    return total_breakfast_lunch, total_lunch, total_breakfast_paid, total_breakfast_free, total_eating
 
 
 def get_group_statistics_text(class_name: str, report_date: str = None) -> str:
@@ -170,16 +207,18 @@ def get_group_statistics_text(class_name: str, report_date: str = None) -> str:
     if report_date is None:
         report_date = date.today().strftime("%Y-%m-%d")
 
-    total_eating, total_paid, total_free, total_no_meal = get_summary_stats(class_name, report_date)
+    total_breakfast_lunch, total_lunch, total_breakfast_paid, total_breakfast_free, total_eating = get_summary_stats(class_name, report_date)
 
     # Форматирование даты для отображения
     date_obj = date.fromisoformat(report_date)
     formatted_date = date_obj.strftime("%d.%m.%Y")
 
     stats_text = f"""📊 Питание: {class_name} ({formatted_date})
-• Всего питается: {total_eating} чел.
-  — Платно: {total_paid}
-  — Бесплатно: {total_free}
-• Не питаются: {total_no_meal}"""
+• Завтрак+Обед: {total_breakfast_lunch}
+• Обед: {total_lunch}
+• Завтрак платно: {total_breakfast_paid}
+• Завтрак льготы: {total_breakfast_free}
+
+Всего питается: {total_eating} чел."""
 
     return stats_text

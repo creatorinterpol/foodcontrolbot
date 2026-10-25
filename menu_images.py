@@ -96,7 +96,7 @@ def is_weekend() -> bool:
         True если суббота или воскресенье
     """
     today = date.today()
-    return today.weekday() >= 5
+    return False  # 6-дневная учебная неделя, бот всегда показывает меню следующего учебного дня
 
 
 def setup_menu_images_directory():
